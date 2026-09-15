@@ -13,7 +13,7 @@ curl -fsSL https://raw.githubusercontent.com/meyer-coder/claude-code-eta/main/in
 This installs two things:
 
 - **The ETA and usage battery.** Open Claude Code and send a prompt. The ETA appears in the status line under the input box. Sessions that are already open pick it up on their own; if nothing changes, restart Claude Code.
-- **preview.** Open a new Terminal window and type `preview` to pick one of your 5 most recently used repos. See [preview](#preview).
+- **preview.** Open a new Terminal window and type `preview` to pick one of your 5 most recently used repos. It has its own section, with its own install, at the bottom: [preview](#preview).
 
 You need macOS, Claude Code, and `jq` (install it with `brew install jq`). To uninstall, see [Uninstall](#uninstall).
 
@@ -42,33 +42,6 @@ This adds three things to the Claude Code status line, under the input box:
 - **Usage battery.** How much of your 5-hour limit, weekly limit and Fable weekly limit is used, and when they reset.
 
 Estimates update themselves while work runs, and they learn from your finished tasks: if they keep running short, new ones are scaled up.
-
-## preview
-
-Type `preview` in Terminal to get a menu of the 5 folders and repos you used most recently:
-
-```
-Recent:  ↑/↓ move · Enter open · Esc quit
-  ❯ ~/projects/investing-bot  (git)
-    ~/projects/voucheriq  (git)
-    ~/projects/claude-code-eta  (git)
-    ~/Downloads
-    N/A
-```
-
-- Move with the arrow keys (or `j` and `k`), press Enter to open, and press Esc or `q` to cancel.
-- Enter goes to that folder and starts Claude Code with a kickoff prompt: it reviews recent commits, uncommitted changes and notes, then suggests what to work on next.
-- It remembers every folder you `cd` into. Until you have history, it lists the git repos in `~/projects`.
-
-Change how it behaves by setting these in `~/.zshrc` before the line that loads `preview`:
-
-| Setting | Default | Does |
-| --- | --- | --- |
-| `PREVIEW_COUNT` | `5` | How many recent folders to list |
-| `PREVIEW_AUTO_CLAUDE` | `1` | Set to `0` to only change folder, without starting Claude Code |
-| `PREVIEW_CLAUDE_PROMPT` | kickoff prompt | The prompt Claude Code starts with |
-
-`preview` needs zsh, the default shell on macOS.
 
 ## Requirements
 
@@ -148,3 +121,46 @@ curl -fsSL https://raw.githubusercontent.com/meyer-coder/claude-code-eta/main/un
 ## License
 
 MIT
+
+## preview
+
+A separate tool in this repo: type `preview` in Terminal to jump back into one of the 5 folders and repos you used most recently. The main install above already includes it. To install only preview, paste this into Terminal:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/meyer-coder/claude-code-eta/main/preview/install.sh | bash
+```
+
+Then open a new Terminal window and type `preview`.
+
+What it looks like:
+
+```
+Recent:  ↑/↓ move · Enter open · Esc quit
+  ❯ ~/projects/my-app  (git)
+    ~/projects/website  (git)
+    ~/projects/claude-code-eta  (git)
+    ~/Downloads
+    N/A
+```
+
+- Move with the arrow keys (or `j` and `k`), press Enter to open, and press Esc or `q` to cancel.
+- Enter goes to that folder and starts Claude Code with a kickoff prompt: it reviews recent commits, uncommitted changes and notes, then suggests what to work on next.
+- It remembers every folder you `cd` into. Until you have history, it lists the git repos in `~/projects`.
+
+Change how it behaves by setting these in `~/.zshrc` before the line that loads `preview`:
+
+| Setting | Default | Does |
+| --- | --- | --- |
+| `PREVIEW_COUNT` | `5` | How many recent folders to list |
+| `PREVIEW_AUTO_CLAUDE` | `1` | Set to `0` to only change folder, without starting Claude Code |
+| `PREVIEW_CLAUDE_PROMPT` | kickoff prompt | The prompt Claude Code starts with |
+
+`preview` needs zsh, the default shell on macOS.
+
+To remove only preview:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/meyer-coder/claude-code-eta/main/preview/uninstall.sh | bash
+```
+
+Your recent-folder history is kept. Add `-s -- --purge` after `bash` to delete it too.
