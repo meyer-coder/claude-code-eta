@@ -1,6 +1,6 @@
 #!/bin/bash
-# Claude Code ETA uninstaller. Removes the ETA hooks and status line, and puts back the status line
-# you had before installing.
+# Claude Code ETA uninstaller. Removes the ETA hooks and status line (putting back the status line you
+# had before installing) and the preview repo menu.
 #
 #   curl -fsSL https://raw.githubusercontent.com/meyer-coder/claude-code-eta/main/uninstall.sh | bash
 #
@@ -54,6 +54,22 @@ if [ -f "$SETTINGS" ]; then
     echo "Could not update $SETTINGS, so it was left unchanged. Backup: $backup" >&2
   fi
   rm -f "$tmp"
+fi
+
+# preview: remove the lines the installer added to ~/.zshrc and the script; keep its history unless --purge.
+ZSHRC="$HOME/.zshrc"
+if [ -f "$ZSHRC" ] && grep -qF '# >>> preview (claude-code-eta) >>>' "$ZSHRC"; then
+  cp "$ZSHRC" "$ZSHRC.bak-preview-uninstall-$(date +%Y%m%d-%H%M%S)"
+  tmpz=$(mktemp)
+  awk '/^# >>> preview \(claude-code-eta\) >>>$/ {skip=1; next} /^# <<< preview \(claude-code-eta\) <<<$/ {skip=0; next} !skip' "$ZSHRC" > "$tmpz" && cat "$tmpz" > "$ZSHRC"
+  rm -f "$tmpz"
+  echo "Removed preview from $ZSHRC."
+elif [ -f "$ZSHRC" ] && grep -qF '.config/preview/preview.zsh' "$ZSHRC"; then
+  echo "Note: $ZSHRC loads preview with a line the installer did not add; remove it yourself if you no longer want preview."
+fi
+if [ -f "$HOME/.config/preview/preview.zsh" ]; then
+  rm -f "$HOME/.config/preview/preview.zsh"; echo "Removed $HOME/.config/preview/preview.zsh."
+  if [ "$purge" = 1 ]; then rm -rf "$HOME/.config/preview"; echo "Removed preview history."; fi
 fi
 
 if [ -d "$DEST" ]; then rm -rf "$DEST"; echo "Removed $DEST."; fi

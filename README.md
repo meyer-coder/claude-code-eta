@@ -1,6 +1,6 @@
 # Claude Code ETA
 
-Know how much longer Claude Code will take, and how much of your plan you have left.
+Know how much longer Claude Code will take and how much of your plan you have left, and jump back into your recent repos with one word.
 
 ## Install
 
@@ -10,7 +10,10 @@ Open the **Terminal** app on your Mac, paste this line, and press Return:
 curl -fsSL https://raw.githubusercontent.com/meyer-coder/claude-code-eta/main/install.sh | bash
 ```
 
-Then open Claude Code and send a prompt. The ETA appears in the status line under the input box. Sessions that are already open pick it up on their own; if nothing changes, restart Claude Code.
+This installs two things:
+
+- **The ETA and usage battery.** Open Claude Code and send a prompt. The ETA appears in the status line under the input box. Sessions that are already open pick it up on their own; if nothing changes, restart Claude Code.
+- **preview.** Open a new Terminal window and type `preview` to pick one of your 5 most recently used repos. See [preview](#preview).
 
 You need macOS, Claude Code, and `jq` (install it with `brew install jq`). To uninstall, see [Uninstall](#uninstall).
 
@@ -22,7 +25,7 @@ cd claude-code-eta
 ./install.sh
 ```
 
-The installer copies the scripts to `~/.claude/hooks/eta/`, backs up `~/.claude/settings.json`, and adds its hooks and status line. Your other hooks and settings stay as they are. If you already had a status line, it is saved and put back when you uninstall. Running the installer again updates to the latest version.
+The installer copies the ETA scripts to `~/.claude/hooks/eta/` and `preview` to `~/.config/preview/`. It backs up `~/.claude/settings.json` and `~/.zshrc`, adds its hooks and status line, and adds one line to `~/.zshrc` that loads `preview`. Your other hooks and settings stay as they are. If you already had a status line, it is saved and put back when you uninstall. Running the installer again updates to the latest version.
 
 ## What you get
 
@@ -39,6 +42,33 @@ This adds three things to the Claude Code status line, under the input box:
 - **Usage battery.** How much of your 5-hour limit, weekly limit and Fable weekly limit is used, and when they reset.
 
 Estimates update themselves while work runs, and they learn from your finished tasks: if they keep running short, new ones are scaled up.
+
+## preview
+
+Type `preview` in Terminal to get a menu of the 5 folders and repos you used most recently:
+
+```
+Recent:  ↑/↓ move · Enter open · Esc quit
+  ❯ ~/projects/investing-bot  (git)
+    ~/projects/voucheriq  (git)
+    ~/projects/claude-code-eta  (git)
+    ~/Downloads
+    N/A
+```
+
+- Move with the arrow keys (or `j` and `k`), press Enter to open, and press Esc or `q` to cancel.
+- Enter goes to that folder and starts Claude Code with a kickoff prompt: it reviews recent commits, uncommitted changes and notes, then suggests what to work on next.
+- It remembers every folder you `cd` into. Until you have history, it lists the git repos in `~/projects`.
+
+Change how it behaves by setting these in `~/.zshrc` before the line that loads `preview`:
+
+| Setting | Default | Does |
+| --- | --- | --- |
+| `PREVIEW_COUNT` | `5` | How many recent folders to list |
+| `PREVIEW_AUTO_CLAUDE` | `1` | Set to `0` to only change folder, without starting Claude Code |
+| `PREVIEW_CLAUDE_PROMPT` | kickoff prompt | The prompt Claude Code starts with |
+
+`preview` needs zsh, the default shell on macOS.
 
 ## Requirements
 
@@ -92,7 +122,7 @@ Tokens are counted as new input, cache writes and output. Cached context that ge
 curl -fsSL https://raw.githubusercontent.com/meyer-coder/claude-code-eta/main/uninstall.sh | bash
 ```
 
-This removes the hooks and scripts and restores your previous status line. Your ETA history in `~/.claude/eta/` is kept. To delete it too:
+This removes the hooks, scripts and `preview`, and restores your previous status line. Your ETA history in `~/.claude/eta/` and your `preview` history are kept. To delete them too:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/meyer-coder/claude-code-eta/main/uninstall.sh | bash -s -- --purge
@@ -110,6 +140,7 @@ curl -fsSL https://raw.githubusercontent.com/meyer-coder/claude-code-eta/main/un
 
 - **The install command says "not found" (404):** GitHub can take a few minutes to serve a new version. Wait a minute and paste it again.
 - **"jq was not found":** run `brew install jq`, then paste the install command again.
+- **"command not found: preview":** open a new Terminal window, or run `source ~/.zshrc`.
 - **Nothing shows up:** restart Claude Code, and check that `disableAllHooks` is not set in `~/.claude/settings.json`.
 - **"ETA unavailable":** see `~/.claude/eta/estimate.log` for the reason.
 - **Fable bar shows `…`:** it fills in within 10 minutes of working, and only if your plan includes Fable.

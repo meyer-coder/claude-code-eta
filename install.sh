@@ -34,6 +34,9 @@ self="${BASH_SOURCE[0]:-}"
 if [ -n "$self" ] && [ -f "$self" ] && [ -f "$(dirname "$self")/hooks/eta/lib.sh" ]; then
   local_src="$(cd "$(dirname "$self")" && pwd)/hooks/eta"
 fi
+if [ -n "$local_src" ]; then cp "$(dirname "$local_src")/../preview/preview.zsh" "$work/preview.zsh"
+else curl -fsSL "$REPO_RAW/preview/preview.zsh" -o "$work/preview.zsh" || stop_install "could not download preview.zsh from $REPO_RAW. Nothing was changed."; fi
+if command -v zsh >/dev/null 2>&1; then zsh -n "$work/preview.zsh" || stop_install "preview.zsh did not pass a syntax check. Nothing was changed."; fi
 for s in $SCRIPTS; do
   if [ -n "$local_src" ]; then
     cp "$local_src/$s" "$work/$s"
@@ -88,6 +91,20 @@ jq '
 jq -e 'type == "object"' "$work/settings.json" >/dev/null || stop_install "could not update settings. Your settings were not changed."
 cp "$work/settings.json" "$SETTINGS"
 
+# preview: the recent-repo menu for zsh. Installed next to its history, loaded from ~/.zshrc.
+PREVIEW_DIR="$HOME/.config/preview"
+mkdir -p "$PREVIEW_DIR"
+install -m 644 "$work/preview.zsh" "$PREVIEW_DIR/preview.zsh"
+ZSHRC="$HOME/.zshrc"
+if grep -qF '.config/preview/preview.zsh' "$ZSHRC" 2>/dev/null; then
+  preview_note="preview is already loaded from $ZSHRC."
+else
+  [ -f "$ZSHRC" ] && cp "$ZSHRC" "$ZSHRC.bak-preview-$stamp"
+  printf '\n# >>> preview (claude-code-eta) >>>\nsource "$HOME/.config/preview/preview.zsh"\n# <<< preview (claude-code-eta) <<<\n' >> "$ZSHRC"
+  preview_note="Added preview to $ZSHRC."
+fi
+case "${SHELL:-}" in */zsh) ;; *) preview_note="$preview_note Your shell is not zsh, so preview only works after you switch to zsh." ;; esac
+
 if jq -e '.disableAllHooks == true' "$SETTINGS" >/dev/null 2>&1; then
   echo "Note: disableAllHooks is on in $SETTINGS, so the ETA will not run until you turn hooks back on."
 fi
@@ -95,8 +112,10 @@ fi
 cat <<DONE
 
 Installed.
-  Open Claude Code and send a prompt. Sessions that are already open pick this up on
+  ETA: open Claude Code and send a prompt. Sessions that are already open pick this up on
   their own; if the status line does not change, restart Claude Code.
+  preview: open a new Terminal window and type  preview  to pick one of your 5 most recent repos.
+  $preview_note
   Settings backup: $backup
   Remove it any time:
     curl -fsSL $REPO_RAW/uninstall.sh | bash
