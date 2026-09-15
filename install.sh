@@ -18,9 +18,11 @@ SCRIPTS="lib.sh task-start.sh estimate.sh stop.sh account.sh job-start.sh job-do
 stop_install() { printf '\nInstall stopped: %s\n' "$*" >&2; exit 1; }
 
 [ "$(uname -s)" = "Darwin" ] || stop_install "this version runs on macOS only. It relies on the macOS versions of stat, date and md5."
-for tool in jq perl curl claude; do
+export PATH="$PATH:$HOME/.local/bin:$HOME/.claude/local:/opt/homebrew/bin:/usr/local/bin"
+for tool in jq perl curl; do
   command -v "$tool" >/dev/null 2>&1 || stop_install "'$tool' was not found. Install it (for jq: brew install jq), then run the installer again."
 done
+command -v claude >/dev/null 2>&1 || echo "Note: the claude command was not found. The status line will install, but estimates need Claude Code installed."
 
 echo "Installing Claude Code ETA into $DEST"
 work=$(mktemp -d)
@@ -43,8 +45,14 @@ done
 
 mkdir -p "$CLAUDE_DIR"
 [ -f "$SETTINGS" ] || echo '{}' > "$SETTINGS"
-jq -e 'type == "object"' "$SETTINGS" >/dev/null 2>&1 \
+jq -e . "$SETTINGS" >/dev/null 2>&1 \
   || stop_install "$SETTINGS is not valid JSON. Fix it, then run the installer again. Nothing was changed."
+jq -e 'type == "object"' "$SETTINGS" >/dev/null 2>&1 \
+  || stop_install "$SETTINGS must be a JSON object (it should start with {). Fix it, then run the installer again. Nothing was changed."
+bad=$(jq -r '(.hooks // {}) | if type != "object" then "hooks"
+  else [to_entries[] | select(.key as $k | ["UserPromptSubmit", "Stop", "StopFailure", "PostToolUse", "SubagentStop"] | index($k))
+        | select((.value | type) != "array" and .value != null) | "hooks." + .key] | join(", ") end' "$SETTINGS")
+[ -z "$bad" ] || stop_install "in $SETTINGS, $bad should be a list ([ ... ]). Fix it, then run the installer again. Nothing was changed."
 
 mkdir -p "$DEST" "$DATA"
 for s in $SCRIPTS; do install -m 755 "$work/$s" "$DEST/$s"; done
@@ -54,23 +62,27 @@ backup="$SETTINGS.bak-eta-$stamp"
 cp "$SETTINGS" "$backup"
 
 # Keep a status line you already had, so uninstall.sh can put it back.
-if jq -e '.statusLine != null and (((.statusLine.command // "") | contains("hooks/eta/statusline.sh")) | not)' "$SETTINGS" >/dev/null 2>&1; then
+if jq -e '.statusLine != null and (((.statusLine | type) != "object") or (((.statusLine.command // "") | tostring | contains("hooks/eta/statusline.sh")) | not))' "$SETTINGS" >/dev/null 2>&1; then
   jq '.statusLine' "$SETTINGS" > "$DATA/previous-statusline.json"
   echo "Your existing status line was saved to $DATA/previous-statusline.json. Uninstalling puts it back."
 fi
 
 jq '
-  def mine: (.hooks // []) | any(.[]; (.command // "") | tostring | contains("hooks/eta/"));
-  def keep_others: if type == "array" then map(select(mine | not)) else [] end;
+  # Remove only our own hook commands; a group that also holds any other hook in it stays.
+  def is_ours: type == "object" and ((.command // "") | tostring | contains("hooks/eta/"));
+  def keep_others: map(if type == "object" and (.hooks | type) == "array"
+                       then ((.hooks | length) as $n | .hooks |= map(select(is_ours | not))
+                             | if $n > 0 and (.hooks | length) == 0 then empty else . end)
+                       else . end);
   def cmd(file; extra): {type: "command", command: ("bash \"$HOME/.claude/hooks/eta/" + file + "\"")} + extra;
   .hooks = (.hooks // {})
-  | .hooks.UserPromptSubmit = ((.hooks.UserPromptSubmit | keep_others)
+  | .hooks.UserPromptSubmit = (((.hooks.UserPromptSubmit // []) | keep_others)
       + [{hooks: [cmd("task-start.sh"; {timeout: 10})]}, {hooks: [cmd("estimate.sh"; {async: true, timeout: 120})]}])
-  | .hooks.Stop = ((.hooks.Stop | keep_others) + [{hooks: [cmd("stop.sh"; {timeout: 30})]}])
-  | .hooks.StopFailure = ((.hooks.StopFailure | keep_others) + [{hooks: [cmd("stop.sh"; {timeout: 30})]}])
-  | .hooks.PostToolUse = ((.hooks.PostToolUse | keep_others)
+  | .hooks.Stop = (((.hooks.Stop // []) | keep_others) + [{hooks: [cmd("stop.sh"; {timeout: 30})]}])
+  | .hooks.StopFailure = (((.hooks.StopFailure // []) | keep_others) + [{hooks: [cmd("stop.sh"; {timeout: 30})]}])
+  | .hooks.PostToolUse = (((.hooks.PostToolUse // []) | keep_others)
       + [{matcher: "Workflow|Agent|Task|Bash", hooks: [cmd("job-start.sh"; {async: true, timeout: 120})]}])
-  | .hooks.SubagentStop = ((.hooks.SubagentStop | keep_others) + [{hooks: [cmd("job-done.sh"; {async: true, timeout: 10})]}])
+  | .hooks.SubagentStop = (((.hooks.SubagentStop // []) | keep_others) + [{hooks: [cmd("job-done.sh"; {async: true, timeout: 10})]}])
   | .statusLine = {type: "command", command: "bash \"$HOME/.claude/hooks/eta/statusline.sh\"", refreshInterval: 1}
 ' "$SETTINGS" > "$work/settings.json" || stop_install "could not update settings. Your settings were not changed."
 jq -e 'type == "object"' "$work/settings.json" >/dev/null || stop_install "could not update settings. Your settings were not changed."

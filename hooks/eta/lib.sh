@@ -14,6 +14,9 @@
 #   history.jsonl, jobs-history.jsonl             finished tasks and jobs, for calibration
 #   limits.json                                   5-hour, weekly and Fable readings
 
+# Claude Code opened from the Dock may not have your shell PATH: add the usual install locations.
+export PATH="$PATH:$HOME/.local/bin:$HOME/.claude/local:/opt/homebrew/bin:/usr/local/bin"
+
 ETA_DIR="$HOME/.claude/eta"
 STATE_DIR="$ETA_DIR/state"
 HISTORY="$ETA_DIR/history.jsonl"
