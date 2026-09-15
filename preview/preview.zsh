@@ -1,11 +1,22 @@
-# preview — arrow-key menu of your most recently used directories/repos.
+# preview: arrow-key menu of your most recently used git repos (your projects).
 # Usage: type `preview`, use ↑/↓ (or j/k), Enter to cd + launch Claude Code, Esc/q to cancel.
-# PREVIEW_AUTO_CLAUDE=0 to only cd; PREVIEW_CLAUDE_PROMPT to change the kickoff prompt.
+#
+# Settings (set them in ~/.zshrc before the line that loads this file):
+#   PREVIEW_COUNT=5             how many projects to list
+#   PREVIEW_AUTO_CLAUDE=1       0 to only cd, without starting Claude Code
+#   PREVIEW_CLAUDE_PROMPT="..." the prompt Claude Code starts with
+#   PREVIEW_GIT_ONLY=1          0 to also list recent folders that are not git repos
+#   PREVIEW_ROOTS="..."         folders whose git repos are projects even before you cd into them
+
+zmodload zsh/datetime 2>/dev/null
+zmodload -F zsh/stat b:zstat 2>/dev/null
 
 PREVIEW_HISTORY="${PREVIEW_HISTORY:-$HOME/.config/preview/history}"
 PREVIEW_COUNT="${PREVIEW_COUNT:-5}"
+PREVIEW_GIT_ONLY="${PREVIEW_GIT_ONLY:-1}"
+PREVIEW_ROOTS="${PREVIEW_ROOTS:-$HOME/projects $HOME/code $HOME/dev $HOME/src $HOME/repos $HOME/Developer $HOME/GitHub $HOME/Documents/GitHub}"
 
-# Prompt Claude Code is started with after you pick a repo.
+# Prompt Claude Code is started with after you pick a project.
 PREVIEW_CLAUDE_PROMPT="${PREVIEW_CLAUDE_PROMPT:-Kick off this session by figuring out where this repo stands and what to do next. \
 Look at: the last 15-20 commits (git log --stat), uncommitted changes (git status, git diff --stat), the current branch vs main, \
 CLAUDE.md / README / any TODO, NOTES or roadmap files, and open TODO/FIXME comments in recently touched files. \
@@ -13,50 +24,113 @@ Then give me: (1) a short summary of what we were most recently working on and w
 (2) anything half-done, broken, or uncommitted that needs attention first, and \
 (3) a prioritized list of 3-5 concrete things to get done in this session. Keep it brief, then ask me which one to start on.}"
 
-# Record every directory you cd into (most recent first, deduped).
+# Record every directory you cd into, newest first, as "<epoch> <dir>".
 _preview_record() {
   local dir="$PWD"
   [[ "$dir" == "$HOME" ]] && return
-  local tmp="$PREVIEW_HISTORY.tmp"
-  { print -r -- "$dir"; [[ -f "$PREVIEW_HISTORY" ]] && grep -vxF -- "$dir" "$PREVIEW_HISTORY"; } \
-    | head -n 100 > "$tmp" && mv "$tmp" "$PREVIEW_HISTORY"
+  mkdir -p "${PREVIEW_HISTORY:h}" 2>/dev/null
+  local tmp="$PREVIEW_HISTORY.tmp.$$"
+  { print -r -- "$EPOCHSECONDS $dir"
+    [[ -f "$PREVIEW_HISTORY" ]] && awk -v d="$dir" '{ p = $0; sub(/^[0-9]+ /, "", p); if (p != d) print }' "$PREVIEW_HISTORY"
+  } | head -n 200 > "$tmp" && mv "$tmp" "$PREVIEW_HISTORY"
 }
 autoload -Uz add-zsh-hook
 add-zsh-hook chpwd _preview_record
 
-# Collect candidates: history first, then any git repos under ~/projects as fallback.
+# The git repo that contains $1 (stops below $HOME, so a dotfiles repo in ~ is not every folder). Sets REPLY.
+_preview_repo_root() {
+  local d="$1"
+  while [[ -n "$d" && "$d" != "/" && "$d" != "$HOME" ]]; do
+    if [[ -e "$d/.git" ]]; then REPLY="$d"; return 0; fi
+    d="${d:h}"
+  done
+  return 1
+}
+
+# When git last recorded work in repo $1: the newest of its index, HEAD, reflog and fetch files. Sets REPLY.
+_preview_git_time() {
+  local g="$1/.git" f line best=0
+  local -a t
+  if [[ -f "$g" ]]; then   # worktree or submodule: .git is a file that points at the real git folder
+    read -r line < "$g"; g="${line#gitdir: }"; [[ "$g" != /* ]] && g="$1/$g"
+  fi
+  for f in "$g/index" "$g/HEAD" "$g/logs/HEAD" "$g/FETCH_HEAD"; do
+    [[ -e "$f" ]] || continue
+    zstat -A t +mtime -- "$f" 2>/dev/null || continue
+    (( t[1] > best )) && best=${t[1]}
+  done
+  REPLY=$best
+}
+
+# Projects, newest first, as "<epoch> <dir>".
 _preview_candidates() {
-  local -a seen
-  local d
+  local -A when
+  local line t d root hist_time=0 i=0
+  local -a mt
   if [[ -f "$PREVIEW_HISTORY" ]]; then
-    while IFS= read -r d; do
-      [[ -d "$d" && "$d" != "$PWD" ]] || continue
-      (( ${seen[(Ie)$d]} )) && continue
-      seen+=("$d"); print -r -- "$d"
+    zstat -A mt +mtime -- "$PREVIEW_HISTORY" 2>/dev/null && hist_time=${mt[1]}
+    while IFS= read -r line; do
+      (( i++ ))
+      if [[ "$line" == <->" "* ]]; then t="${line%% *}"; d="${line#* }"
+      else t=$(( hist_time - i )); d="$line"; fi      # older lines have no time: keep their order
+      [[ -d "$d" ]] || continue
+      if _preview_repo_root "$d"; then d="$REPLY"
+      elif [[ "$PREVIEW_GIT_ONLY" == 1 ]]; then continue; fi
+      (( ${when[$d]:-0} < t )) && when[$d]=$t
     done < "$PREVIEW_HISTORY"
   fi
-  for d in "$HOME"/projects/*(N/om); do
-    d="${d%/}"
-    [[ -d "$d/.git" && "$d" != "$PWD" ]] || continue
-    (( ${seen[(Ie)$d]} )) && continue
-    seen+=("$d"); print -r -- "$d"
+  for root in ${=PREVIEW_ROOTS}; do
+    for d in "$root"/*(N/); do
+      [[ -e "$d/.git" ]] && when[$d]=${when[$d]:-0}
+    done
   done
+  for d in ${(k)when}; do                               # work in a repo without cd (for example in Claude Code) counts too
+    [[ -e "$d/.git" ]] || continue
+    _preview_git_time "$d"
+    (( REPLY > ${when[$d]} )) && when[$d]=$REPLY
+  done
+  for d in ${(k)when}; do
+    [[ "$d" == "$PWD" ]] && continue
+    print -r -- "${when[$d]} $d"
+  done | sort -rn
+}
+
+# "~/projects/app  · main · 2h ago". Sets REPLY.
+_preview_label() {
+  local d="$1" t="$2" head label s
+  label="${d/#$HOME/~}"
+  if [[ -f "$d/.git/HEAD" ]]; then
+    read -r head < "$d/.git/HEAD"
+    if [[ "$head" == "ref: refs/heads/"* ]]; then label+="  · ${head#ref: refs/heads/}"; else label+="  · detached"; fi
+  fi
+  if (( t > 0 )); then
+    s=$(( EPOCHSECONDS - t ))
+    if (( s < 3600 )); then label+=" · $(( s / 60 ))m ago"
+    elif (( s < 86400 )); then label+=" · $(( s / 3600 ))h ago"
+    else label+=" · $(( s / 86400 ))d ago"; fi
+  fi
+  REPLY="$label"
 }
 
 preview() {
-  local -a items
-  items=("${(@f)$(_preview_candidates | head -n "$PREVIEW_COUNT")}")
-  items=("${(@)items:#}")
+  local -a rows items labels
+  local row
+  rows=("${(@f)$(_preview_candidates | head -n "$PREVIEW_COUNT")}")
+  rows=("${(@)rows:#}")
+  for row in "${rows[@]}"; do
+    items+=("${row#* }")
+    _preview_label "${row#* }" "${row%% *}"; labels+=("$REPLY")
+  done
   if (( ${#items} == 0 )); then
-    print "preview: no recent directories yet — cd somewhere first."
+    print "preview: no git projects found yet. cd into a repo, or set PREVIEW_ROOTS to the folders that hold your repos."
     return 1
   fi
 
   # Pad empty slots with N/A so the list is always PREVIEW_COUNT rows.
   local real=${#items}
-  while (( ${#items} < PREVIEW_COUNT )); do items+=("N/A"); done
+  while (( ${#items} < PREVIEW_COUNT )); do items+=("N/A"); labels+=("N/A"); done
 
-  local sel=1 key label k2 k3 seq
+  local sel=1 key k2 k3 seq
   local n=${#items}
 
   _preview_draw() {
@@ -66,17 +140,15 @@ preview() {
         print -P -- "    %F{8}N/A%f"
         continue
       fi
-      label="${items[$i]/#$HOME/~}"
-      [[ -d "${items[$i]}/.git" ]] && label="$label  (git)"
       if (( i == sel )); then
-        print -P -- "  %F{cyan}%B❯ $label%b%f"
+        print -rP -- "  %F{cyan}%B❯ ${labels[$i]//\%/%%}%b%f"
       else
-        print -- "    $label"
+        print -r -- "    ${labels[$i]}"
       fi
     done
   }
 
-  print -P "%F{yellow}Recent:%f  ↑/↓ move · Enter open · Esc quit"
+  print -P "%F{yellow}Projects:%f  ↑/↓ move · Enter open · Esc quit"
   _preview_draw
   tput civis 2>/dev/null
 

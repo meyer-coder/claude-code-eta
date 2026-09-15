@@ -13,7 +13,7 @@ curl -fsSL https://raw.githubusercontent.com/meyer-coder/claude-code-eta/main/in
 This installs two things:
 
 - **The ETA and usage battery.** Open Claude Code and send a prompt. The ETA appears in the status line under the input box. Sessions that are already open pick it up on their own; if nothing changes, restart Claude Code.
-- **preview.** Open a new Terminal window and type `preview` to pick one of your 5 most recently used repos. It has its own section, with its own install, at the bottom: [preview](#preview).
+- **preview.** Open a new Terminal window and type `preview` to pick one of your 5 most recently used git repos. It has its own section, with its own install, at the bottom: [preview](#preview).
 
 You need macOS, Claude Code, and `jq` (install it with `brew install jq`). To uninstall, see [Uninstall](#uninstall).
 
@@ -124,7 +124,7 @@ MIT
 
 ## preview
 
-A separate tool in this repo: type `preview` in Terminal to jump back into one of the 5 folders and repos you used most recently. The main install above already includes it. To install only preview, paste this into Terminal:
+A separate tool in this repo: type `preview` in Terminal to jump back into one of your 5 most recently used git repos, your projects. The main install above already includes it. To install only preview, paste this into Terminal:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/meyer-coder/claude-code-eta/main/preview/install.sh | bash
@@ -135,25 +135,28 @@ Then open a new Terminal window and type `preview`.
 What it looks like:
 
 ```
-Recent:  ↑/↓ move · Enter open · Esc quit
-  ❯ ~/projects/my-app  (git)
-    ~/projects/website  (git)
-    ~/projects/claude-code-eta  (git)
-    ~/Downloads
+Projects:  ↑/↓ move · Enter open · Esc quit
+  ❯ ~/projects/my-app  · main · 5m ago
+    ~/projects/website  · redesign · 2h ago
+    ~/code/api  · main · 3d ago
+    N/A
     N/A
 ```
 
 - Move with the arrow keys (or `j` and `k`), press Enter to open, and press Esc or `q` to cancel.
 - Enter goes to that folder and starts Claude Code with a kickoff prompt: it reviews recent commits, uncommitted changes and notes, then suggests what to work on next.
-- It remembers every folder you `cd` into. Until you have history, it lists the git repos in `~/projects`.
+- It lists only git repos, newest first. A repo counts as used when you `cd` into it (or any folder inside it) or when git records work there, so work done inside Claude Code counts too.
+- It also finds repos in common project folders (`~/projects`, `~/code`, `~/dev`, `~/src`, `~/repos`, `~/Developer`, `~/GitHub`, `~/Documents/GitHub`) before you ever `cd` into them.
 
 Change how it behaves by setting these in `~/.zshrc` before the line that loads `preview`:
 
 | Setting | Default | Does |
 | --- | --- | --- |
-| `PREVIEW_COUNT` | `5` | How many recent folders to list |
+| `PREVIEW_COUNT` | `5` | How many projects to list |
 | `PREVIEW_AUTO_CLAUDE` | `1` | Set to `0` to only change folder, without starting Claude Code |
 | `PREVIEW_CLAUDE_PROMPT` | kickoff prompt | The prompt Claude Code starts with |
+| `PREVIEW_GIT_ONLY` | `1` | Set to `0` to also list recent folders that are not git repos |
+| `PREVIEW_ROOTS` | common project folders | Space-separated folders whose repos are listed even before you `cd` into them |
 
 `preview` needs zsh, the default shell on macOS.
 
